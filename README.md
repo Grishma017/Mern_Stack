@@ -57,7 +57,7 @@ It allows public visitors to:
 And provides administrators with:
 1. **Secure Admin Authentication** via bcryptjs password hashing and JWT sessions.
 2. **Full CRUD Management**: Create, Read, Update, and Delete recipes directly affecting MongoDB in real time.
-3. **Interactive Dashboard**: Metrics on total recipes, category distribution, and recent additions.
+3. **Recipe Management Dashboard**: Search, review, edit, and delete recipes from one table.
 
 ---
 
@@ -157,7 +157,7 @@ swad-taste-of-nepal/
         │   ├── admin.css               <-- Swad-themed admin console styling
         │   ├── AdminLogin.jsx          <-- Admin sign-in screen
         │   ├── AdminLayout.jsx         <-- Responsive sidebar & topbar layout
-        │   ├── AdminDashboard.jsx      <-- Metric overview & category breakdown
+        │   ├── AdminDashboard.jsx      <-- Recipe management table
         │   ├── ManageRecipes.jsx       <-- Recipe table, search, category filter, delete modal
         │   ├── AddRecipe.jsx           <-- Add recipe form with dynamic list rows
         │   └── EditRecipe.jsx          <-- Edit recipe form auto-populated with current data
@@ -211,8 +211,8 @@ swad-taste-of-nepal/
 ### Admin Security Model
 1. **Password Hashing:** Passwords are never stored as plain text. The `Admin` model uses a Mongoose pre-save hook with `bcryptjs.genSalt(10)` and `bcryptjs.hash()`.
 2. **Password Verification:** Passwords are verified via `bcryptjs.compare()`.
-3. **Session Management:** On successful authentication at `/api/auth/login`, a signed JWT is returned and stored in an HTTP-only cookie (`adminToken`) as well as in `localStorage` for cross-tab resiliency.
-4. **Protected Routes:** The `authenticateAdmin` middleware protects `POST /api/recipes`, `PUT /api/recipes/:id`, and `DELETE /api/recipes/:id`.
+3. **Session Management:** On successful authentication at `/api/auth/admin/login`, a signed JWT is returned in an HTTP-only cookie and stored in `localStorage` for cross-tab resiliency.
+4. **Protected Routes:** The `authenticate` middleware protects recipe creation, updates, deletion, and image uploads.
 5. **No Public Registration:** Admin accounts can only be created via the backend script (`npm run seed:admin`) using environment variables.
 
 ### Admin Routes & Views
@@ -220,8 +220,8 @@ swad-taste-of-nepal/
 | Route | View Component | Description |
 | :--- | :--- | :--- |
 | `/admin/login` | `AdminLogin.jsx` | Secure login form with show/hide password and validation |
-| `/admin/dashboard` | `AdminDashboard.jsx` | Quick stats, total recipes, category distribution, recent entries |
-| `/admin/recipes` | `ManageRecipes.jsx` | Recipe table, keyword search, category filter, edit/delete actions |
+| `/admin/dashboard` | `AdminDashboard.jsx` | Recipe table with search, view, edit, and delete actions |
+| `/admin/recipes` | `AdminDashboard.jsx` | Recipe management table |
 | `/admin/recipes/add` | `AddRecipe.jsx` | Recipe creation form with dynamic ingredient/instruction rows |
 | `/admin/recipes/edit/:id`| `EditRecipe.jsx` | Pre-populated recipe editor saving via `PUT /api/recipes/:id` |
 
@@ -233,14 +233,17 @@ swad-taste-of-nepal/
 
 | Method | Endpoint | Access | Purpose |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/auth/login` | Public | Admin login, sets token |
-| `POST` | `/api/auth/logout` | Public | Admin logout, clears cookie |
-| `GET` | `/api/auth/me` | Protected | Returns authenticated admin profile |
+| `POST` | `/api/auth/admin/login` | Public | Admin login, sets session |
+| `POST` | `/api/auth/user/register` | Public | Create a user account |
+| `POST` | `/api/auth/user/login` | Public | User login, sets session |
+| `POST` | `/api/auth/logout` | Public | Clear the current session |
+| `GET` | `/api/auth/me` | Protected | Return the authenticated profile |
 | `GET` | `/api/recipes` | Public | List all recipes (supports `?category=` and `?search=`) |
 | `GET` | `/api/recipes/:id` | Public | Get single recipe details |
-| `POST` | `/api/recipes` | **Protected (Admin)** | Create a new recipe |
-| `PUT` | `/api/recipes/:id` | **Protected (Admin)** | Update an existing recipe |
-| `DELETE` | `/api/recipes/:id`| **Protected (Admin)** | Permanently delete a recipe |
+| `POST` | `/api/recipes` | **Protected (User or Admin)** | Create a new recipe |
+| `POST` | `/api/recipes/upload-image` | **Protected (User or Admin)** | Upload a recipe image |
+| `PUT` | `/api/recipes/:id` | **Protected (Owner or Admin)** | Update an existing recipe |
+| `DELETE` | `/api/recipes/:id`| **Protected (Owner or Admin)** | Permanently delete a recipe |
 | `GET` | `/api/health` | Public | Backend health check and database connectivity |
 
 ---
@@ -248,7 +251,7 @@ swad-taste-of-nepal/
 ## 💻 Setup and Running Guide
 
 ### Prerequisites
-- [Node.js](https://nodejs.org/) (v18 or higher)
+- [Node.js](https://nodejs.org/) (v20.19+ or v22.12+)
 - [MongoDB](https://www.mongodb.com/) (running locally on port 27017 or a MongoDB Atlas URI)
 
 ---
@@ -260,28 +263,27 @@ cd backend
 npm install
 ```
 
-Configure your `.env` file (one has already been generated):
+Copy `.env.example` to `.env`, then set your database URI and unique secrets:
 ```env
 MONGODB_URI=mongodb://127.0.0.1:27017/swad
-JWT_SECRET=swad_jwt_secret_key_authenticity_2026_nepal
+JWT_SECRET=replace_with_a_unique_random_secret_at_least_32_characters
 PORT=5000
-ADMIN_EMAIL=admin@swad.com
-ADMIN_PASSWORD=Admin@Swad123
+CLIENT_URL=http://localhost:5173
+ADMIN_EMAIL=your_admin_email@example.com
+ADMIN_PASSWORD=replace_with_a_unique_password_at_least_12_characters
 ADMIN_NAME=Chief Admin
 NODE_ENV=development
 ```
+Do not use the example values as production credentials. Keep `.env` private.
 
 ---
 
 ### 2. Admin Account Initialization
 
-Run the one-time admin seeding script to create or update the admin account:
+Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `backend/.env`, then run the seeding script to create or update the admin account:
 ```bash
 npm run seed:admin
 ```
-*Default Credentials:*
-- **Email:** `admin@swad.com`
-- **Password:** `Admin@Swad123`
 
 ---
 
@@ -309,6 +311,7 @@ cd frontend
 npm run dev
 # Frontend will run on http://localhost:5173
 ```
+For deployment, set `VITE_API_BASE_URL` to the backend API base URL, including `/api`.
 
 ---
 
@@ -321,4 +324,5 @@ npm run dev
 - **Add Recipe:** [http://localhost:5173/admin/recipes/add](http://localhost:5173/admin/recipes/add)
 - **Backend Health Check:** [http://localhost:5000/api/health](http://localhost:5000/api/health)
 #   M e r n _ S t a c k  
+ #   S w a d _ D e p l o y m e n t  
  
